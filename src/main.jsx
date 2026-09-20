@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowUpRight, BarChart3, BriefcaseBusiness, CalendarDays, CheckCircle2,
-  ChevronDown, CircleAlert, Clock3, LayoutDashboard, MoreHorizontal, Plus,
+  ChevronDown, CircleAlert, Clock3, LayoutDashboard, Pencil, Plus,
   Search, SlidersHorizontal, Trash2, UsersRound, X
 } from 'lucide-react';
 import './styles.css';
@@ -61,6 +61,8 @@ function App() {
   const [allocations, setAllocations] = useState(initialAllocations);
   const [entries, setEntries] = useState(initialEntries);
   const [modal, setModal] = useState(null);
+  const [editingProject, setEditingProject] = useState(null);
+  const [editingResource, setEditingResource] = useState(null);
   const [notice, setNotice] = useState('');
 
   const getResource = (id) => resources.find((resource) => resource.id === id);
@@ -83,6 +85,22 @@ function App() {
     setNotice(`${project.name} is ready for resourcing.`);
   }
 
+  function updateProject(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const start = form.get('start');
+    const end = form.get('end');
+    if (end < start) {
+      setNotice('Project end date must be after the start date.');
+      return;
+    }
+    const updated = { ...editingProject, name: form.get('name'), client: form.get('client'), owner: form.get('owner'), budget: Number(form.get('budget')), start, end, status: form.get('status') };
+    setProjects((items) => items.map((project) => project.id === updated.id ? updated : project));
+    setEditingProject(null);
+    setModal(null);
+    setNotice(`${updated.name} was updated.`);
+  }
+
   function addResource(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -91,6 +109,23 @@ function App() {
     setResources((items) => [...items, resource]);
     setModal(null);
     setNotice(`${resource.name} was added to the team.`);
+  }
+
+  function updateResource(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const capacity = Number(form.get('capacity'));
+    const planned = allocatedHours(editingResource.id);
+    if (capacity < planned) {
+      setNotice(`Weekly capacity cannot be lower than the ${planned}h already allocated.`);
+      return;
+    }
+    const name = form.get('name');
+    const updated = { ...editingResource, name, initials: name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase(), role: form.get('role'), capacity, rate: Number(form.get('rate')) };
+    setResources((items) => items.map((resource) => resource.id === updated.id ? updated : resource));
+    setEditingResource(null);
+    setModal(null);
+    setNotice(`${updated.name} was updated.`);
   }
 
   function addAllocation(event) {
@@ -133,13 +168,15 @@ function App() {
       <header className="page-head"><div><p className="eyebrow">DELIVERY CONTROL CENTER</p><h1>{view === 'Overview' ? 'Good morning, Maya.' : view}</h1><p>{view === 'Overview' ? 'Here is the health of your delivery portfolio this week.' : 'Manage live delivery planning, capacity, and cost.'}</p></div><div className="head-actions"><button className="icon-button"><Search size={18} /></button><button className="icon-button"><CalendarDays size={18} /></button><button className="avatar">MC</button></div></header>
       {notice && <div className="notice"><CheckCircle2 size={16} />{notice}<button onClick={() => setNotice('')} aria-label="Close notice"><X size={15} /></button></div>}
       {view === 'Overview' && <Overview projects={projects} resources={resources} allocations={allocations} entries={entries} totalCost={totalCost} totalHours={totalHours} teamCapacity={teamCapacity} teamPlanned={teamPlanned} getProject={getProject} getResource={getResource} projectCost={projectCost} projectHours={projectHours} onNewProject={() => setModal('project')} onLogTime={() => setModal('time')} />}
-      {view === 'Projects' && <Projects projects={projects} resources={resources} allocations={allocations} entries={entries} getResource={getResource} projectCost={projectCost} projectHours={projectHours} onNewProject={() => setModal('project')} onAllocation={() => setModal('allocation')} />}
-      {view === 'Team' && <Team resources={resources} allocations={allocations} entries={entries} projects={projects} getProject={getProject} allocatedHours={allocatedHours} setResources={setResources} onNewResource={() => setModal('resource')} onAllocation={() => setModal('allocation')} />}
+      {view === 'Projects' && <Projects projects={projects} resources={resources} allocations={allocations} entries={entries} getResource={getResource} projectCost={projectCost} projectHours={projectHours} onNewProject={() => setModal('project')} onAllocation={() => setModal('allocation')} onEditProject={(project) => { setEditingProject(project); setModal('editProject'); }} onDeleteProject={(projectId) => { const project = getProject(projectId); if (!window.confirm(`Delete ${project?.name}? Its allocations and time entries will also be removed.`)) return; setProjects((items) => items.filter((item) => item.id !== projectId)); setAllocations((items) => items.filter((item) => item.projectId !== projectId)); setEntries((items) => items.filter((item) => item.projectId !== projectId)); setNotice(`${project?.name} and its related delivery data were deleted.`); }} />}
+      {view === 'Team' && <Team resources={resources} allocations={allocations} entries={entries} projects={projects} getProject={getProject} allocatedHours={allocatedHours} setResources={setResources} onNewResource={() => setModal('resource')} onAllocation={() => setModal('allocation')} onEditResource={(resource) => { setEditingResource(resource); setModal('editResource'); }} onDeleteResource={(resourceId) => { const resource = getResource(resourceId); if (!window.confirm(`Delete ${resource?.name}? Their allocations and time entries will also be removed.`)) return; setResources((items) => items.filter((item) => item.id !== resourceId)); setAllocations((items) => items.filter((item) => item.resourceId !== resourceId)); setEntries((items) => items.filter((item) => item.resourceId !== resourceId)); setNotice(`${resource?.name} and their related delivery data were deleted.`); }} />}
       {view === 'Time logs' && <TimeLogs entries={entries} getProject={getProject} getResource={getResource} entryCost={entryCost} totalCost={totalCost} totalHours={totalHours} onLogTime={() => setModal('time')} onDelete={(id) => { setEntries((items) => items.filter((entry) => entry.id !== id)); setNotice('Time entry deleted and costs refreshed.'); }} />}
     </main>
-    {modal && <Modal title={modal === 'project' ? 'Create a project' : modal === 'resource' ? 'Add a delivery resource' : modal === 'allocation' ? 'Allocate a resource' : 'Log time'} onClose={() => setModal(null)}>
+    {modal && <Modal title={modal === 'project' ? 'Create a project' : modal === 'editProject' ? 'Update project' : modal === 'resource' ? 'Add a delivery resource' : modal === 'editResource' ? 'Update delivery resource' : modal === 'allocation' ? 'Allocate a resource' : 'Log time'} onClose={() => { setModal(null); setEditingProject(null); setEditingResource(null); }}>
       {modal === 'project' && <ProjectForm onSubmit={addProject} />}
+      {modal === 'editProject' && <ProjectForm project={editingProject} onSubmit={updateProject} />}
       {modal === 'resource' && <ResourceForm onSubmit={addResource} />}
+      {modal === 'editResource' && <ResourceForm resource={editingResource} onSubmit={updateResource} />}
       {modal === 'allocation' && <AllocationForm resources={resources} projects={projects} allocatedHours={allocatedHours} onSubmit={addAllocation} />}
       {modal === 'time' && <TimeForm resources={resources} projects={projects} onSubmit={addTime} />}
     </Modal>}
@@ -168,23 +205,23 @@ function Overview({ projects, resources, allocations, entries, totalCost, totalH
   </>;
 }
 
-function Projects({ projects, resources, allocations, entries, getResource, projectCost, projectHours, onNewProject, onAllocation }) {
+function Projects({ projects, resources, allocations, entries, getResource, projectCost, projectHours, onNewProject, onAllocation, onEditProject, onDeleteProject }) {
   const [query, setQuery] = useState('');
   const visibleProjects = projects.filter((project) => `${project.name} ${project.client} ${project.owner}`.toLowerCase().includes(query.toLowerCase()));
   return <>
   <div className="toolbar"><div className="filter-input"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" /></div><button className="secondary-button" onClick={onAllocation}><Plus size={16} />Allocate resource</button><button className="primary-button" onClick={onNewProject}><Plus size={16} />New project</button></div>
-  <section className="portfolio-grid">{visibleProjects.map((project) => { const cost = projectCost(project.id); const team = allocations.filter((item) => item.projectId === project.id).map((item) => getResource(item.resourceId)); return <article className="portfolio-card" key={project.id}><div className="portfolio-top"><span className="color-dot" style={{ background: project.color }}></span><Status status={project.status} /><button><MoreHorizontal size={18} /></button></div><h2>{project.name}</h2><p>{project.client}</p><div className="portfolio-meta"><span>Owner <b>{project.owner}</b></span><span>{number.format(projectHours(project.id))}h logged</span></div><div className="portfolio-cost"><small>Live cost</small><b>{money.format(cost)}</b><span>of {money.format(project.budget)}</span></div><span className="progress"><i style={{ width: `${Math.min(100, cost / project.budget * 100)}%`, background: project.color }}></i></span><div className="portfolio-foot"><div className="table-avatars">{team.map((resource) => <Avatar key={resource.id} resource={resource} small />)}</div><span>{team.length} assigned</span></div></article>; })}</section>
+  <section className="portfolio-grid">{visibleProjects.map((project) => { const cost = projectCost(project.id); const team = allocations.filter((item) => item.projectId === project.id).map((item) => getResource(item.resourceId)); return <article className="portfolio-card" key={project.id}><div className="portfolio-top"><span className="color-dot" style={{ background: project.color }}></span><Status status={project.status} /><div className="project-actions"><button onClick={() => onEditProject(project)} aria-label={`Update ${project.name}`} title="Update project"><Pencil size={15} /></button><button className="project-delete" onClick={() => onDeleteProject(project.id)} aria-label={`Delete ${project.name}`} title="Delete project"><Trash2 size={16} /></button></div></div><h2>{project.name}</h2><p>{project.client}</p><div className="portfolio-meta"><span>Owner <b>{project.owner}</b></span><span>{number.format(projectHours(project.id))}h logged</span></div><div className="portfolio-cost"><small>Live cost</small><b>{money.format(cost)}</b><span>of {money.format(project.budget)}</span></div><span className="progress"><i style={{ width: `${Math.min(100, cost / project.budget * 100)}%`, background: project.color }}></i></span><div className="portfolio-foot"><div className="table-avatars">{team.map((resource) => <Avatar key={resource.id} resource={resource} small />)}</div><span>{team.length} assigned</span></div></article>; })}</section>
   <section className="card allocation-card"><CardHead eyebrow="RESOURCE PLAN" title="Weekly allocations" action="Capacity limits apply" /><div className="allocation-matrix"><div className="table-head"><span>Resource</span>{projects.slice(0, 4).map((project) => <span key={project.id}>{project.name}</span>)}<span>Available</span></div>{resources.map((resource) => { const planned = allocations.filter((item) => item.resourceId === resource.id); const sum = planned.reduce((total, item) => total + item.hours, 0); return <div className="matrix-row" key={resource.id}><div><Avatar resource={resource} small /><b>{resource.name}</b></div>{projects.slice(0, 4).map((project) => { const allocation = planned.find((item) => item.projectId === project.id); return <span key={project.id} className={allocation ? 'allocated' : ''}>{allocation ? `${allocation.hours}h` : '-'}</span>; })}<b className={sum > resource.capacity - 5 ? 'low-capacity' : ''}>{resource.capacity - sum}h</b></div>; })}</div></section>
   <ProjectGantt projects={projects} allocations={allocations} />
   </>; }
 
-function Team({ resources, allocations, entries, projects, getProject, allocatedHours, setResources, onNewResource, onAllocation }) {
+function Team({ resources, allocations, entries, projects, getProject, allocatedHours, setResources, onNewResource, onAllocation, onEditResource, onDeleteResource }) {
   const [query, setQuery] = useState('');
   const visibleResources = resources.filter((resource) => `${resource.name} ${resource.role}`.toLowerCase().includes(query.toLowerCase()));
   const resourceCost = (resourceId) => entries.filter((entry) => entry.resourceId === resourceId).reduce((total, entry) => total + entry.hours * (resources.find((resource) => resource.id === resourceId)?.rate || 0), 0);
   return <>
   <div className="toolbar"><div className="filter-input"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your team" /></div><button className="secondary-button" onClick={onAllocation}><Plus size={16} />Add allocation</button><button className="primary-button" onClick={onNewResource}><Plus size={16} />Add resource</button></div>
-  <section className="card resource-card"><CardHead eyebrow="DELIVERY TEAM" title="People, capacity, and rate card" action="Weekly view" /><div className="resource-table"><div className="table-head"><span>Resource</span><span>Project allocations</span><span>Planned / cap</span><span>Hourly rate</span><span>Live cost</span><span>Availability</span></div>{visibleResources.map((resource) => { const assigned = allocations.filter((allocation) => allocation.resourceId === resource.id); const planned = allocatedHours(resource.id); const available = resource.capacity - planned; return <div className="resource-row" key={resource.id}><div className="resource-person"><Avatar resource={resource} /><span><b>{resource.name}</b><small>{resource.role}</small></span></div><div className="assignment-chips">{assigned.map((allocation) => <span key={allocation.id}>{getProject(allocation.projectId)?.name}<b>{allocation.hours}h</b></span>)}</div><div className="plan-cell"><b>{planned}h / {resource.capacity}h</b><span className="thin-bar"><i style={{ width: `${Math.min(100, planned / resource.capacity * 100)}%` }}></i></span></div><label className="rate-input"><span>$</span><input aria-label={`${resource.name} hourly rate`} type="number" value={resource.rate} onChange={(event) => setResources((items) => items.map((item) => item.id === resource.id ? { ...item, rate: Math.max(0, Number(event.target.value)) } : item))} /><small>/ hr</small></label><b className="live-cost">{money.format(resourceCost(resource.id))}</b><div className={available < 5 ? 'availability tight' : 'availability'}><b>{available}h</b><small>{available < 5 ? 'Nearly full' : 'available'}</small></div></div>; })}</div></section>
+  <section className="card resource-card"><CardHead eyebrow="DELIVERY TEAM" title="People, capacity, and rate card" action="Weekly view" /><div className="resource-table"><div className="table-head"><span>Resource</span><span>Project allocations</span><span>Planned / cap</span><span>Hourly rate</span><span>Live cost</span><span>Availability</span><span></span></div>{visibleResources.map((resource) => { const assigned = allocations.filter((allocation) => allocation.resourceId === resource.id); const planned = allocatedHours(resource.id); const available = resource.capacity - planned; return <div className="resource-row" key={resource.id}><div className="resource-person"><Avatar resource={resource} /><span><b>{resource.name}</b><small>{resource.role}</small></span></div><div className="assignment-chips">{assigned.map((allocation) => <span key={allocation.id}>{getProject(allocation.projectId)?.name}<b>{allocation.hours}h</b></span>)}</div><div className="plan-cell"><b>{planned}h / {resource.capacity}h</b><span className="thin-bar"><i style={{ width: `${Math.min(100, planned / resource.capacity * 100)}%` }}></i></span></div><label className="rate-input"><span>$</span><input aria-label={`${resource.name} hourly rate`} type="number" value={resource.rate} onChange={(event) => setResources((items) => items.map((item) => item.id === resource.id ? { ...item, rate: Math.max(0, Number(event.target.value)) } : item))} /><small>/ hr</small></label><b className="live-cost">{money.format(resourceCost(resource.id))}</b><div className={available < 5 ? 'availability tight' : 'availability'}><b>{available}h</b><small>{available < 5 ? 'Nearly full' : 'available'}</small></div><div className="row-actions"><button onClick={() => onEditResource(resource)} aria-label={`Update ${resource.name}`} title="Update resource"><Pencil size={15} /></button><button className="project-delete" onClick={() => onDeleteResource(resource.id)} aria-label={`Delete ${resource.name}`} title="Delete resource"><Trash2 size={16} /></button></div></div>; })}</div></section>
   <section className="team-insight"><div><p className="eyebrow">CAPACITY GUARDRAIL</p><h2>Assignments respect individual caps.</h2><p>New allocations are checked against each resource's weekly capacity before they are added.</p></div><div className="guardrail-icon"><SlidersHorizontal size={28} /></div></section>
   <ResourceGantt resources={resources} projects={projects} allocations={allocations} />
   </>; }
@@ -207,8 +244,8 @@ function Avatar({ resource, small = false }) { return <span className={`resource
 function Status({ status }) { return <span className={`status ${status.toLowerCase().replace(' ', '-')}`}>{status}</span>; }
 function Modal({ title, onClose, children }) { return <div className="modal-backdrop"><div className="modal"><div className="modal-head"><div><p className="eyebrow">WORKLANE</p><h2>{title}</h2></div><button onClick={onClose} aria-label="Close"><X size={19} /></button></div>{children}</div></div>; }
 function Field({ label, name, type = 'text', defaultValue, min, required = true }) { return <label className="field"><span>{label}</span><input name={name} type={type} defaultValue={defaultValue} min={min} required={required} /></label>; }
-function ProjectForm({ onSubmit }) { return <form className="form" onSubmit={onSubmit}><Field label="Project name" name="name" /><Field label="Client" name="client" /><Field label="Project owner" name="owner" defaultValue="Maya Chen" /><div className="form-split"><Field label="Start date" name="start" type="date" defaultValue="2026-10-05" /><Field label="End date" name="end" type="date" defaultValue="2026-12-18" /></div><Field label="Budget (USD)" name="budget" type="number" min="0" defaultValue="50000" /><button className="primary-button" type="submit">Create project</button></form>; }
-function ResourceForm({ onSubmit }) { return <form className="form" onSubmit={onSubmit}><Field label="Full name" name="name" /><Field label="Delivery role" name="role" /><div className="form-split"><Field label="Weekly capacity" name="capacity" type="number" min="1" defaultValue="40" /><Field label="Hourly rate (USD)" name="rate" type="number" min="0" defaultValue="120" /></div><button className="primary-button" type="submit">Add resource</button></form>; }
+function ProjectForm({ onSubmit, project }) { return <form className="form" onSubmit={onSubmit}><Field label="Project name" name="name" defaultValue={project?.name} /><Field label="Client" name="client" defaultValue={project?.client} /><Field label="Project owner" name="owner" defaultValue={project?.owner || 'Maya Chen'} /><div className="form-split"><Field label="Start date" name="start" type="date" defaultValue={project?.start || '2026-10-05'} /><Field label="End date" name="end" type="date" defaultValue={project?.end || '2026-12-18'} /></div><Field label="Budget (USD)" name="budget" type="number" min="0" defaultValue={project?.budget || '50000'} /><label className="field"><span>Delivery status</span><select name="status" defaultValue={project?.status || 'Planning'}><option>Planning</option><option>On track</option><option>At risk</option></select></label><button className="primary-button" type="submit">{project ? 'Save project changes' : 'Create project'}</button></form>; }
+function ResourceForm({ onSubmit, resource }) { return <form className="form" onSubmit={onSubmit}><Field label="Full name" name="name" defaultValue={resource?.name} /><Field label="Delivery role" name="role" defaultValue={resource?.role} /><div className="form-split"><Field label="Weekly capacity" name="capacity" type="number" min="1" defaultValue={resource?.capacity || '40'} /><Field label="Hourly rate (USD)" name="rate" type="number" min="0" defaultValue={resource?.rate || '120'} /></div><button className="primary-button" type="submit">{resource ? 'Save resource changes' : 'Add resource'}</button></form>; }
 function AllocationForm({ resources, projects, allocatedHours, onSubmit }) { return <form className="form" onSubmit={onSubmit}><label className="field"><span>Resource</span><select name="resourceId">{resources.map((resource) => <option value={resource.id} key={resource.id}>{resource.name} ({resource.capacity - allocatedHours(resource.id)}h free)</option>)}</select></label><label className="field"><span>Project</span><select name="projectId">{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label><Field label="Weekly planned hours" name="hours" type="number" min="1" defaultValue="8" /><button className="primary-button" type="submit">Add allocation</button></form>; }
 function TimeForm({ resources, projects, onSubmit }) { return <form className="form" onSubmit={onSubmit}><div className="form-split"><label className="field"><span>Person</span><select name="resourceId">{resources.map((resource) => <option value={resource.id} key={resource.id}>{resource.name}</option>)}</select></label><label className="field"><span>Project</span><select name="projectId">{projects.map((project) => <option value={project.id} key={project.id}>{project.name}</option>)}</select></label></div><div className="form-split"><Field label="Date" name="date" type="date" defaultValue="2026-09-19" /><Field label="Hours" name="hours" type="number" min="0.25" defaultValue="4" /></div><Field label="Description" name="note" defaultValue="Delivery work" /><button className="primary-button" type="submit">Add time entry</button></form>; }
 
